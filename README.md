@@ -2,7 +2,7 @@
 
 ### Practica 1:
 
-Ok
+Ok, Solo faltaria que pongas las practicas dentro de una carpeta llamada practicas
 
 ### Practica 2:
 
