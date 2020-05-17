@@ -46,7 +46,7 @@ class Program():
 
 
 ## emulates an Input/Output device controller (driver)
-class IoDeviceController():
+class IoDeviceController:
 
     def __init__(self, device):
         self._device = device
@@ -81,156 +81,6 @@ class IoDeviceController():
         return "IoDeviceController for {deviceID} running: {currentPCB} waiting: {waiting_queue}".format(deviceID=self._device.deviceId, currentPCB=self._currentPCB, waiting_queue=self._waiting_queue)
 
 
-## emulates the system loader - PRACTICA 3
-class Loader():
-    def __init__(self):
-        self._nextBaseDir = 0           ##inicialmente no hay ningun programa en memoria
-    
-    @property
-    def setNextBaseDir(adress)          
-        self._nextBaseDir = adress
-
-    def nextBaseDir(self)
-        return self._nextBaseDir
-
-    def load(self, pcb, program):
-        programSize = len(program.instructions)
-        
-        newBaseDir = self.nextBaseDir
-        newBound = newBaseDir + programSize
-
-        pcb.setBaseDir(newBaseDir)
-        pcb.setBound(newBound)
-
-        for i in range(0, programSize):
-            HARDWARE.memory.write(i+newBaseDir, program.instruction[i])
-            self.setNextProgramCell(newBound)
-            log.logger.info(HARDWARE.memory)
-
-        return newBaseDir
-
-## emulates a dispatcher controller - PRACTICA 3
-class Dispatcher():
-    ## configura el pc de la cpu y direccion base 
-    def load(self, pcb):
-        HARDWARE.mmu.baseDir = pcb.baseDir
-        HARDWARE.cpu.pc = pcb.pc
-    ## "foto" del proceso en cpu + idle
-    def save(self, pcb):
-        pcb.pc = HARDWARE.cpu.pc
-        HARDWARE.cpu.pc = -1
-
-
-
-## process states - PRACTICA 3
-NEW = "NEW"
-READY = "READY"
-RUNNING = "RUNNING"
-WAITING = "WAITING"
-TERMINATED = "TERMINATED"
-
-## emulates a process control block - PRACTICA 3
-class PCB():
-    def __init__(self, pID, baseDir):        
-        self._pID = pID
-        self._baseDir = _baseDir
-
-        self._pc = 0
-        self._state = NEW
-                
-        #self._limit = 0        necesario? terminated deriba a un killhandler
-        
-        
-    @property
-    def pID(self):
-        return self._pID
-    
-    @property
-    def baseDir(self):
-        return self._baseDir    
-    
-    @property
-    def pc(self):
-        return self._pc
-
-    @property
-    def state(self):
-        return self._state
- 
-    ##setters
-    @property
-    def setState(self, state):
-        self._setState = state
-
-    @property
-    def setBaseDir(self, baseDir):
-        self._setBaseDir = _baseDir
-
-
-## emulates a ready queue - PRACTICA 3
-class ReadyQueue():
-    def __init__(self):
-        self._queue = _queue.Queue(50)
-
-    @property
-    def queue(self):
-        return self._queue
-    
-    def put(self, pcb):
-        self.queue.put(pcb)
-
-    def get(self):
-        return self.queue.get()
-
-
-## emulates a PCB table -- PRACTICA 3
-class PCBTable():
-    def __init__(self):
-        self._pcbTable = []
-        self._runningPCB = None
-        self._newPID = 0
-
-    @property
-    def pcbTable(self):
-        return self._pcbTable
-
-    @property
-    def runningPCB(self):
-        return self._runningPCB
-
-    @property
-    def newPID(self):
-        return self._newPID    
-    
-    
-
-    def add(self, pcb):
-        self._PCBTable.add(pcb)
-
-    def remove(self, pID):
-        aux = self._PCBTable
-        tableSize = len(self._PCBTable)
-        for i in range(0, tableSize):
-            if (self._PCBTable[i].pID() != pID):
-                aux.add(self._PCBTable[i])
-        self._PCBTable = aux
-
-    def get(self, pID):
-        for i in range (0, self._PCBTable):
-            if (self._PCBTable[i].pID() == pID):
-                return self._PCBTable[i]
-        log.logger.error("THE PCB WITH PID {pID} IS NOT PRESENT IN TABLE")
-
-    def getNewPID(self):
-        aux = self.newPID
-        self.newPID = self.newPID + 1
-        return aux
-
-
-
-
-
-
 ## emulates the  Interruptions Handlers
 class AbstractInterruptionHandler():
     def __init__(self, kernel):
@@ -243,96 +93,220 @@ class AbstractInterruptionHandler():
     def execute(self, irq):
         log.logger.error("-- EXECUTE MUST BE OVERRIDEN in class {classname}".format(classname=self.__class__.__name__))
 
-    # setea el nuevo pcb dependiendo el estado de runningPCB - PRACTICA 3
-    def setPCB(pcb):
-         if (self.kernel.pcbTable.runningPCB == None):
-            pcb.setState(RUNNING)
-            self.kernel.pcbTable.runningPCB = pcb
+    # toma un proceso en estado ready de la cola
+    def fetchReadyPCB(self):
+        if self.kernel.readyQueue.lenght() > 0:
+            nextPCB = self.kernel.readyQueue.pop(0)
+            self.kernel.dispatcher.load(nextPCB)
+            nextPCB.changeStateTo(RUNNING)
+            self.kernel.pcbTable.setRunningPCB(nextPCB)
+
+    # setea el pcb en running o ready dependiendo si la cpu esta atendiendo un proceso o no.
+    def stagePCB(self, pcb):
+        if self.kernel.pcbTable.runningPCB is None:
+            pcb.changeStateTo(RUNNING)
+            self.kernel.pcbTable.setRunningPCB(pcb)
             self.kernel.dispatcher.load(pcb)
         else:
-            pcb.setState(READY)
-            self.kernel.ReadyQueue.put(pcb)
-
-    # planificar el siguiente proceso - PRACTICA 3
-    def setNextPCB():
-        #verificar ready queue
-        if (not self.kernel.readyQueue.queue.isEmpty):
-            #tomar un pcb con estado ready de la cola
-            nextPCB = self.kernel.readyQueue.get
-            nextPCB.setState(RUNNING)
-            self.kernel.dispatcher.load(nextPCB)
-            self.kernel.pcbTable.runningPCB = nextPCB
+            pcb.changeStateTo(READY)
+            self.kernel.readyQueue.add(pcb)
 
 
-
-
-# - PRACTICA 3
 class NewInterruptionHandler(AbstractInterruptionHandler):
 
     def execute(self, irq):
-        newProgram = irq.parameters                 ## guardar intrucciones de programa
-        
-        newPC = self.kernel.loader.load(newProgram)
-        newPID = pcbTable.getNewPID()               ## obtener nuevo ID de proceso -- podria hacerlo el pc table al agregar
-        newPCB = PCB(newPID, newPC)        
-        
-        self.kernel.pcbTable.add(newPCB)            ## añadir a tabla PCB el nuevo bloque de control
-
-        newPCB.baseDir = self.kernel.loader.load(program)   ##obtener direccion
-
-        self.setPCB(newPCB)
-    
+        program = irq.parameters
+        newPCB = PCB(program.name)
+        self.kernel.pcbTable.add(newPCB)
+        self.kernel.loader.load(newPCB, program)
+        self.stagePCB(newPCB)
 
 
-# - PRACTICA 3
 class KillInterruptionHandler(AbstractInterruptionHandler):
 
     def execute(self, irq):
-        finishedPCB = self.kernel.pcbTable.runningPCB ## obtener pcb en ejecucion con state terminated
-        finishedPCB.setState(TERMINATED)  ## proceso finalizado
-        self.kernel.dispatcher.save(finishedPCB)
-        self.setNextPCB()
+        killPCB = self.kernel.pcbTable.runningPCB
+        self.kernel.dispatcher.save(killPCB)
+        killPCB.changeStateTo(TERMINATED)
+        self.kernel.pcbTable.setRunningPCB(None)
+        log.logger.info("{killPCB.path} finished correctly")
+        self.fetchReadyPCB()
 
-    
 
-
-    
-# - PRACTICA 3
 class IoInInterruptionHandler(AbstractInterruptionHandler):
 
     def execute(self, irq):
         operation = irq.parameters
-        # guardar estado actual del proceso en ejecucion
-        actualPCB = self.kernel.pcbTable.runningPCB
-        actualPCB.state(WAITING)
-        self.kernel.dispatcher.save(actualPCB)
-
-        self.kernel.ioDeviceController.runOperation(actualPCB, operation)
+        inPCB = self.kernel.pcbTable.runningPCB
+        self.kernel.dispatcher.save(inPCB)
+        inPCB.changeStateTo(WAITING)
+        self.kernel.pcbTable.setRunningPCB(None)
+        self.kernel.ioDeviceController.runOperation(inPCB, operation)
         log.logger.info(self.kernel.ioDeviceController)
+        self.fetchReadyPCB()
 
-        self.setNextPCB(pcb)
 
-
-# - PRACTICA 3
 class IoOutInterruptionHandler(AbstractInterruptionHandler):
 
     def execute(self, irq):
-        pcb = self.kernel.ioDeviceController.getFinishedPCB()        
+        outPCB = self.kernel.ioDeviceController.getFinishedPCB()
         log.logger.info(self.kernel.ioDeviceController)
-        self.setPCB(pcb)
+        self.stagePCB(outPCB)
+
+
+class Dispatcher:
+
+    def __init__(self):
+        pass
+
+    def save(self, pcb):
+        pcb.setPc(HARDWARE.cpu.pc)
+        HARDWARE.cpu.pc = -1
+
+    def load(self, pcb):
+        HARDWARE.cpu.pc = pcb.pc
+        HARDWARE.mmu.baseDir = pcb.baseDir
+
+
+class Loader:
+
+    def __init__(self):
+        self._nextProgram = 0
+
+    def load(self, pcb, program):
+        newBaseDir = self._nextProgram
+        progSize = len(program.instructions)
+        newLimit = newBaseDir + progSize
+        pcb.setBaseDir(newBaseDir)
+        pcb.setLimit(newLimit)
+        for i in range(0, progSize):
+            HARDWARE.memory.write(i+newBaseDir, program.instructions[i])
+        self.setNextProgram(newLimit)
+        log.logger.info(HARDWARE.memory)
+
+
+    @property
+    def nextProgram(self):
+        return self._nextProgram
+
+    # error con annotation setter 
+    def setNextProgram(self, value):
+        self._nextProgram = value
+
+
+class ReadyQueue:
+
+    def __init__(self):
+        self._ready_queue = []
+
+    def add(self, pcb):
+        self._ready_queue.append(pcb)
+
+    def pop(self, n):
+        return self._ready_queue.pop(n)
+
+    def lenght(self):
+        return len(self._ready_queue)
+        
+
+# Estados posibles de un proceso
+NEW = "NEW"
+READY = "READY"
+WAITING = "WAITING"
+RUNNING = "RUNNING"
+TERMINATED = "TERMINATED"
+
+
+class PCB:
+    def __init__(self, path):
+        self._pid = -1
+        self._baseDir = -1
+        self._limit = -1
+        self._pc = 0
+        self._state = NEW
+        self._path = path           #nombre de programa como direccion
+
+    @property
+    def pid(self):
+        return self._pid
+
+    @property
+    def baseDir(self):
+        return self._baseDir
+
+    @property
+    def limit(self):
+        return self._limit
+
+    @property
+    def pc(self):
+        return self._pc
+
+    @property
+    def state(self):
+        return self._state
+
+    @property
+    def path(self):
+        return self._path
+
+    # setters manuales (error con annotation @setter)
+
+    def setBaseDir(self, baseDir):
+        self._baseDir = baseDir
+
+    def setPid(self, pid):
+        self._pid = pid
+
+    def setLimit(self, limit):
+        self._limit = limit
+
+    def setPc(self, pc):
+        self._pc = pc
+
+    def changeStateTo(self, state):
+        self._state = state
+
+
+class PCBTable:
+    def __init__(self):
+        self._PCBTable = dict()
+        self._runningPCB = None
+        self._PIDCounter = 0
+
+    def get(self, pid):
+        return self._PCBTable[pid]
+
+    def add(self, pcb):
+        pcb.setPid(self._PIDCounter)
+        self._PCBTable[self._PIDCounter] = pcb
+        self.getNewPID()
+
+    def remove(self, pid):
+        del self._PCBTable[pid]
+
+    @property
+    def runningPCB(self):
+        return self._runningPCB
+
+    # error con annotation @setter
+    def setRunningPCB(self, pcb):
+        self._runningPCB = pcb
+
+    def getNewPID(self):
+        self._PIDCounter += 1
 
 
 # emulates the core of an Operative System
-class Kernel():
+class Kernel:
 
     def __init__(self):
         ## setup interruption handlers
-        killHandler = KillInterruptionHandler(self)
-        HARDWARE.interruptVector.register(KILL_INTERRUPTION_TYPE, killHandler)
-
-        # - PRACTICA 3
         newHandler = NewInterruptionHandler(self)
         HARDWARE.interruptVector.register(NEW_INTERRUPTION_TYPE, newHandler)
+
+        killHandler = KillInterruptionHandler(self)
+        HARDWARE.interruptVector.register(KILL_INTERRUPTION_TYPE, killHandler)
 
         ioInHandler = IoInInterruptionHandler(self)
         HARDWARE.interruptVector.register(IO_IN_INTERRUPTION_TYPE, ioInHandler)
@@ -340,47 +314,40 @@ class Kernel():
         ioOutHandler = IoOutInterruptionHandler(self)
         HARDWARE.interruptVector.register(IO_OUT_INTERRUPTION_TYPE, ioOutHandler)
 
-        ## controls the Hardware's I/O Device
+        # setup controladora de dispositivo IO
         self._ioDeviceController = IoDeviceController(HARDWARE.ioDevice)
 
-        ## setup loader - PRACTICA 3
-        self._loader = Loader(self)
-
-        ## setup dispatcher - PRACTICA 3
+        # setup componentes del sistema
+        self._readyQueue = ReadyQueue()
         self._dispatcher = Dispatcher()
-
-        ## setup PCB table - PRACTICA 3
+        self._loader = Loader()
         self._pcbTable = PCBTable()
 
-        ## setup Ready Queue - PRACTICA 3
-        self._readyQueue = ReadyQueue()
-
+    @property
+    def readyQueue(self):
+        return self._readyQueue
 
     @property
-    def ioDeviceController(self):
-        return self._ioDeviceController
+    def dispatcher(self):
+        return self._dispatcher
 
     @property
     def loader(self):
         return self._loader
-    
-    @property
-    def dispatcher(self):
-        return self._dispatcher
 
     @property
     def pcbTable(self):
         return self._pcbTable
 
     @property
-    def readyQueue(self):
-        return self._readyQueue   
-    
-    ## emulates a "system call" for programs execution - PRACTICA 3
+    def ioDeviceController(self):
+        return self._ioDeviceController
+
+
+    # funcion principal
     def run(self, program):
         newIRQ = IRQ(NEW_INTERRUPTION_TYPE, program)
-        HARDWARE.interruptVector.handle(newIRQ)       
-
+        HARDWARE.interruptVector.handle(newIRQ)
 
     def __repr__(self):
         return "Kernel "
