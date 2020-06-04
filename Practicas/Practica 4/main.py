@@ -27,9 +27,9 @@ if __name__ == '__main__':
     prg3 = Program("prg3.exe", [ASM.CPU(4), ASM.IO(), ASM.CPU(1)])
 
     # execute all programs "concurrently"
-    kernel.run(prg1)
-    kernel.run(prg2)
-    kernel.run(prg3)
+    kernel.run(prg1, 5)
+    kernel.run(prg2, 3)
+    kernel.run(prg3, 1)
 
 
 

@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+import heapq
 
 from hardware import *
 import log
@@ -94,18 +95,13 @@ class AbstractInterruptionHandler():
 
     # toma un proceso en estado ready de la cola
     def fetchReadyPCB(self):
-#       if self.kernel.readyQueue.length() > 0:
-#           nextPCB = self.kernel.readyQueue.pop(0)
-#           self.kernel.dispatcher.load(nextPCB)
-#           nextPCB.changeStateTo(RUNNING)
-#           self.kernel.pcbTable.setRunningPCB(nextPCB)
         if not self.kernel.scheduler.emptyRQ():
             nextPCB = self.kernel.scheduler.next()
             self.kernel.dispatcher.load(nextPCB)
             nextPCB.changeStateTo(RUNNING)
             self.kernel.pcbTable.setRunningPCB(nextPCB)
 
-            log.logger.info("{prg_name} will start running on the next tick".format(prg_name=nextPCB.path))
+            log.logger.info("{prg_name} will start running".format(prg_name=nextPCB.path))
 
     # setea el pcb en running o ready dependiendo si la cpu esta atendiendo un proceso o no.
     def stagePCB(self, pcb):
@@ -114,7 +110,7 @@ class AbstractInterruptionHandler():
             self.kernel.pcbTable.setRunningPCB(pcb)
             self.kernel.dispatcher.load(pcb)
 
-            log.logger.info("{prg_name} will start running on the next tick".format(prg_name=pcb.path))
+            log.logger.info("{prg_name} will start running".format(prg_name=pcb.path))
         else:
             pcb.changeStateTo(READY)
             self.kernel.scheduler.add(pcb)
@@ -125,10 +121,18 @@ class AbstractInterruptionHandler():
 class NewInterruptionHandler(AbstractInterruptionHandler):
 
     def execute(self, irq):
-        program = irq.parameters
-        newPCB = PCB(program.name)
+        # refactor: new debe handlear el par con la prioridad
+        entryParameters = irq.parameters
+        program = entryParameters['program']
+        priority = entryParameters['priority']
+
+        newPCB = PCB(program.name, priority)
+
         self.kernel.pcbTable.add(newPCB)
         self.kernel.loader.load(newPCB, program)
+
+        log.logger.info("{prg} loaded onto pcb table".format(prg=newPCB.path))
+
         self.stagePCB(newPCB)
 
 
@@ -153,6 +157,7 @@ class IoInInterruptionHandler(AbstractInterruptionHandler):
         self.kernel.pcbTable.setRunningPCB(None)
         self.kernel.ioDeviceController.runOperation(inPCB, operation)
         log.logger.info(self.kernel.ioDeviceController)
+        log.logger.info("{prg} is waiting now...".format(prg=inPCB.path))
         self.fetchReadyPCB()
 
 
@@ -203,21 +208,6 @@ class Loader:
         self._nextProgram = value
 
 
-class ReadyQueue:
-
-    def __init__(self):
-        self._ready_queue = []
-
-    def add(self, pcb):
-        self._ready_queue.append(pcb)
-
-    def pop(self, n):
-        return self._ready_queue.pop(n)
-
-    def length(self):
-        return len(self._ready_queue)
-
-
 # Schedulers
 class AbstractScheduler:
     def __init__(self):
@@ -233,20 +223,49 @@ class AbstractScheduler:
         return len(self._readyQueue) == 0
 
     def expropriationRequired(self, pcb1, pcb2):
-        pass
+        return False
+
+    def calcPriority(self, defaultPriority, arrivalTime):
+        if arrivalTime < 5:
+            return defaultPriority
+        elif arrivalTime < 10 and defaultPriority > 1:
+            return defaultPriority - 1
+        elif arrivalTime < 15 and defaultPriority > 2:
+            return defaultPriority - 2
+        elif arrivalTime < 20 and defaultPriority > 3:
+            return defaultPriority - 3
+        else:
+            return 1
 
 
 class FCFS(AbstractScheduler):
 
     def add(self, pcb):
+
         self._readyQueue.append(pcb)
 
     def next(self):
         return self._readyQueue.pop(0)
 
-    def expropriationRequired(self, pcb1, pcb2):
-        return False
 
+class Priority(AbstractScheduler):
+
+    def __init__(self):
+        self._arrivalTime = 0 # segunda variable para handlear prioridades iguales
+        super(Priority, self).__init__()
+
+    def add(self, pcb):
+        pcb.setAge(0)
+        heapq.heappush(self._readyQueue, (self.calcPriority(pcb.priority, pcb.age), self._arrivalTime, pcb))
+        self._arrivalTime += 1
+
+    def next(self):
+        self.updateAllAges()
+        return heapq.heappop(self._readyQueue)[-1]   # pendiente algo mas prolijo
+
+    def updateAllAges(self):
+        for i in self._readyQueue:
+            i[-1].incrementAge()
 
 
 # Estados posibles de un proceso
@@ -258,13 +277,17 @@ TERMINATED = "TERMINATED"
 
 
 class PCB:
-    def __init__(self, path):
+    def __init__(self, path, priority):
         self._pid = -1
         self._baseDir = -1
         self._limit = -1
         self._pc = 0
         self._state = NEW
         self._path = path  # nombre de programa como direccion
+
+        # priority
+        self._age = 0
+        self._priority = priority
 
     @property
     def pid(self):
@@ -290,6 +313,15 @@ class PCB:
     def path(self):
         return self._path
 
+    # Priority scheduler fields
+    @property
+    def age(self):
+        return self._age
+
+    @property
+    def priority(self):
+        return self._priority
+
     # setters manuales (error con annotation @setter)
 
     def setBaseDir(self, baseDir):
@@ -306,6 +338,18 @@ class PCB:
 
     def changeStateTo(self, state):
         self._state = state
+
+    # Priority schedulers functions
+    def incrementAge(self):
+        if self._state != RUNNING or self._state != WAITING:
+            self._age = self._age + 1
+            log.logger.info("{prg} arrival time is {age}".format(prg=self.path, age=self.age))
+
+    def setPriority(self, priority):
+        self._priority = priority
+
+    def setAge(self, age):
+        self._age = age
 
 
 class PCBTable:
@@ -358,18 +402,13 @@ class Kernel:
         self._ioDeviceController = IoDeviceController(HARDWARE.ioDevice)
 
         # setup componentes del sistema
-#       self._readyQueue = ReadyQueue()
-
         self._dispatcher = Dispatcher()
         self._loader = Loader()
         self._pcbTable = PCBTable()
 
-        #primera version con scheduler "first come first serve"
-        self._scheduler = FCFS()
-
-#   @property
-#   def readyQueue(self):
-#       return self._readyQueue
+        #pendiente inicializar schedulers via parametro
+        #self._scheduler = FCFS()
+        self._scheduler = Priority()
 
     @property
     def scheduler(self):
@@ -392,8 +431,13 @@ class Kernel:
         return self._ioDeviceController
 
     # funcion principal
-    def run(self, program):
-        newIRQ = IRQ(NEW_INTERRUPTION_TYPE, program)
+    # refactor: run debe armar un par con el programa y su prioridad
+    def run(self, program, priority):
+        newParameters = {
+            'program': program,
+            'priority': priority
+        }
+        newIRQ = IRQ(NEW_INTERRUPTION_TYPE, newParameters)
         HARDWARE.interruptVector.handle(newIRQ)
 
     def __repr__(self):
