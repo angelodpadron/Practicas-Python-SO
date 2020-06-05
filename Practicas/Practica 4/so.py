@@ -186,6 +186,23 @@ class IoOutInterruptionHandler(AbstractInterruptionHandler):
         self.stagePCB(outPCB)
 
 
+class TimeOutInterruptionHandler(AbstractInterruptionHandler):
+
+    def execute(self, irq):
+        timedOutPCB = self.kernel.pcbTable.runningPCB
+        self.kernel.dispatcher.save(timedOutPCB)
+        timedOutPCB.changeStateTo(READY)
+        self.kernel.scheduler.add(timedOutPCB)
+
+        log.logger.info("{prg} reached the CPU burst limit and has been moved to the ready queue".format(prg=timedOutPCB.path))
+
+        self.kernel.pcbTable.setRunningPCB(None)
+        self.fetchReadyPCB()
+
+        HARDWARE.timer.reset()
+
+
+
 class Dispatcher:
 
     def __init__(self):
@@ -284,27 +301,17 @@ class Priority(AbstractScheduler):
         for i in self._readyQueue:
             i[-1].incrementAge()
 
-class PreemptivePriority(AbstractScheduler):
 
-    def __init__(self):
-        self._arrivalTime = 0 # segunda variable para handlear prioridades iguales
-        super(PreemptivePriority, self).__init__()
-
-    def add(self, pcb):
-        pcb.setAge(0)
-        heapq.heappush(self._readyQueue, (self.calcPriority(pcb.priority, pcb.age), self._arrivalTime, pcb))
-        self._arrivalTime += 1
-
-    def next(self):
-        self.updateAllAges()
-        return heapq.heappop(self._readyQueue)[-1]   # pendiente algo mas prolijo
-
-    def updateAllAges(self):
-        for i in self._readyQueue:
-            i[-1].incrementAge()
+class PreemptivePriority(Priority):
 
     def expropriationRequired(self, pcb1, pcb2):
         return self.calcPriority(pcb1.priority, pcb1.age) < self.calcPriority(pcb2.priority, pcb2.age)
+
+
+class RoundRobin(FCFS):
+    def __init__(self, quantum):
+        super(RoundRobin, self).__init__()
+        HARDWARE.timer.quantum = quantum
 
 
 # Estados posibles de un proceso
@@ -437,6 +444,9 @@ class Kernel:
         ioOutHandler = IoOutInterruptionHandler(self)
         HARDWARE.interruptVector.register(IO_OUT_INTERRUPTION_TYPE, ioOutHandler)
 
+        timeOutHandler = TimeOutInterruptionHandler(self)
+        HARDWARE.interruptVector.register(TIMEOUT_INTERRUPTION_TYPE, timeOutHandler)
+
         # setup controladora de dispositivo IO
         self._ioDeviceController = IoDeviceController(HARDWARE.ioDevice)
 
@@ -448,7 +458,8 @@ class Kernel:
         #pendiente inicializar schedulers via parametro
         #self._scheduler = FCFS()
         #self._scheduler = Priority()
-        self._scheduler = PreemptivePriority()
+        #self._scheduler = PreemptivePriority()
+        self._scheduler = RoundRobin(3)
 
     @property
     def scheduler(self):
