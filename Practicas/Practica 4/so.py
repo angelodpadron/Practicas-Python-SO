@@ -110,7 +110,24 @@ class AbstractInterruptionHandler():
             self.kernel.pcbTable.setRunningPCB(pcb)
             self.kernel.dispatcher.load(pcb)
 
-            log.logger.info("{prg_name} will start running".format(prg_name=pcb.path))
+            log.logger.info("{prg} will start running".format(prg=pcb.path))
+
+        # update: stagePCB debe verificar si el scheduler implementado requiere expropiar el pcb en ejecucion
+
+        elif self.kernel.scheduler.expropriationRequired(pcb, self.kernel.pcbTable.runningPCB):
+            previousPCB = self.kernel.pcbTable.runningPCB
+            self.kernel.dispatcher.save(previousPCB)
+            previousPCB.changeStateTo(READY)
+            self.kernel.scheduler.add(previousPCB)
+
+            log.logger.info("{prg1} has been added to the ready queue due a lower priority than {prg2}".format(prg1=previousPCB.path, prg2=pcb.path))
+
+            pcb.changeStateTo(RUNNING)
+            self.kernel.pcbTable.setRunningPCB(pcb)
+            self.kernel.dispatcher.load(pcb)
+
+            log.logger.info("{prg} will start running".format(prg=pcb.path))
+
         else:
             pcb.changeStateTo(READY)
             self.kernel.scheduler.add(pcb)
@@ -267,6 +284,28 @@ class Priority(AbstractScheduler):
         for i in self._readyQueue:
             i[-1].incrementAge()
 
+class PreemptivePriority(AbstractScheduler):
+
+    def __init__(self):
+        self._arrivalTime = 0 # segunda variable para handlear prioridades iguales
+        super(PreemptivePriority, self).__init__()
+
+    def add(self, pcb):
+        pcb.setAge(0)
+        heapq.heappush(self._readyQueue, (self.calcPriority(pcb.priority, pcb.age), self._arrivalTime, pcb))
+        self._arrivalTime += 1
+
+    def next(self):
+        self.updateAllAges()
+        return heapq.heappop(self._readyQueue)[-1]   # pendiente algo mas prolijo
+
+    def updateAllAges(self):
+        for i in self._readyQueue:
+            i[-1].incrementAge()
+
+    def expropriationRequired(self, pcb1, pcb2):
+        return self.calcPriority(pcb1.priority, pcb1.age) < self.calcPriority(pcb2.priority, pcb2.age)
+
 
 # Estados posibles de un proceso
 NEW = "NEW"
@@ -408,7 +447,8 @@ class Kernel:
 
         #pendiente inicializar schedulers via parametro
         #self._scheduler = FCFS()
-        self._scheduler = Priority()
+        #self._scheduler = Priority()
+        self._scheduler = PreemptivePriority()
 
     @property
     def scheduler(self):
