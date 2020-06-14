@@ -430,7 +430,7 @@ class PCBTable:
 # emulates the core of an Operative System
 class Kernel:
 
-    def __init__(self):
+    def __init__(self, scheduler=None):
         ## setup interruption handlers
         newHandler = NewInterruptionHandler(self)
         HARDWARE.interruptVector.register(NEW_INTERRUPTION_TYPE, newHandler)
@@ -455,11 +455,13 @@ class Kernel:
         self._loader = Loader()
         self._pcbTable = PCBTable()
 
-        #pendiente inicializar schedulers via parametro
-        #self._scheduler = FCFS()
-        #self._scheduler = Priority()
-        #self._scheduler = PreemptivePriority()
-        self._scheduler = RoundRobin(3)
+        if scheduler is None:
+            self._scheduler = RoundRobin(3)
+            log.logger.info("No scheduling algorithm was specified. The kernel will schedule with {scheduler} algorithm".format(
+                scheduler=self.scheduler.__class__.__name__))
+        else:
+            self._scheduler = scheduler
+            log.logger.info("The system will schedule with {scheduler} algorithm".format(scheduler=self.scheduler.__class__.__name__))
 
     @property
     def scheduler(self):

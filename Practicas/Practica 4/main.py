@@ -18,6 +18,8 @@ if __name__ == '__main__':
 
     ## new create the Operative System Kernel
     # "booteamos" el sistema operativo
+
+    # schedulers: FCFS, Priority, PreemptivePriority, RoundRobin(quantum) -- Round Robin es el scheduler por omision.
     kernel = Kernel()
 
     # Ahora vamos a intentar ejecutar 3 programas a la vez
