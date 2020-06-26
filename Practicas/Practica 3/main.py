@@ -11,6 +11,7 @@ if __name__ == '__main__':
     log.logger.info('Starting emulator')
 
     HARDWARE.setup(25)
+    HARDWARE.switchOn()
 
     kernel = Kernel()
 
@@ -23,7 +24,6 @@ if __name__ == '__main__':
     kernel.run(prg3)
 
 
-    HARDWARE.switchOn()
 
 
 

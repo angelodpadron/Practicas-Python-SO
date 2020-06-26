@@ -110,7 +110,24 @@ class AbstractInterruptionHandler():
             self.kernel.pcbTable.setRunningPCB(pcb)
             self.kernel.dispatcher.load(pcb)
 
-            log.logger.info("{prg_name} will start running".format(prg_name=pcb.path))
+            log.logger.info("{prg} will start running".format(prg=pcb.path))
+
+        # update: stagePCB debe verificar si el scheduler implementado requiere expropiar el pcb en ejecucion
+
+        elif self.kernel.scheduler.expropriationRequired(pcb, self.kernel.pcbTable.runningPCB):
+            previousPCB = self.kernel.pcbTable.runningPCB
+            self.kernel.dispatcher.save(previousPCB)
+            previousPCB.changeStateTo(READY)
+            self.kernel.scheduler.add(previousPCB)
+
+            log.logger.info("{prg1} has been added to the ready queue due a lower priority than {prg2}".format(prg1=previousPCB.path, prg2=pcb.path))
+
+            pcb.changeStateTo(RUNNING)
+            self.kernel.pcbTable.setRunningPCB(pcb)
+            self.kernel.dispatcher.load(pcb)
+
+            log.logger.info("{prg} will start running".format(prg=pcb.path))
+
         else:
             pcb.changeStateTo(READY)
             self.kernel.scheduler.add(pcb)
@@ -167,6 +184,23 @@ class IoOutInterruptionHandler(AbstractInterruptionHandler):
         outPCB = self.kernel.ioDeviceController.getFinishedPCB()
         log.logger.info(self.kernel.ioDeviceController)
         self.stagePCB(outPCB)
+
+
+class TimeOutInterruptionHandler(AbstractInterruptionHandler):
+
+    def execute(self, irq):
+        timedOutPCB = self.kernel.pcbTable.runningPCB
+        self.kernel.dispatcher.save(timedOutPCB)
+        timedOutPCB.changeStateTo(READY)
+        self.kernel.scheduler.add(timedOutPCB)
+
+        log.logger.info("{prg} reached the CPU burst limit and has been moved to the ready queue".format(prg=timedOutPCB.path))
+
+        self.kernel.pcbTable.setRunningPCB(None)
+        self.fetchReadyPCB()
+
+        HARDWARE.timer.reset()
+
 
 
 class Dispatcher:
@@ -266,6 +300,18 @@ class Priority(AbstractScheduler):
     def updateAllAges(self):
         for i in self._readyQueue:
             i[-1].incrementAge()
+
+
+class PreemptivePriority(Priority):
+
+    def expropriationRequired(self, pcb1, pcb2):
+        return self.calcPriority(pcb1.priority, pcb1.age) < self.calcPriority(pcb2.priority, pcb2.age)
+
+
+class RoundRobin(FCFS):
+    def __init__(self, quantum):
+        super(RoundRobin, self).__init__()
+        HARDWARE.timer.quantum = quantum
 
 
 # Estados posibles de un proceso
@@ -384,7 +430,7 @@ class PCBTable:
 # emulates the core of an Operative System
 class Kernel:
 
-    def __init__(self):
+    def __init__(self, scheduler=None):
         ## setup interruption handlers
         newHandler = NewInterruptionHandler(self)
         HARDWARE.interruptVector.register(NEW_INTERRUPTION_TYPE, newHandler)
@@ -398,6 +444,9 @@ class Kernel:
         ioOutHandler = IoOutInterruptionHandler(self)
         HARDWARE.interruptVector.register(IO_OUT_INTERRUPTION_TYPE, ioOutHandler)
 
+        timeOutHandler = TimeOutInterruptionHandler(self)
+        HARDWARE.interruptVector.register(TIMEOUT_INTERRUPTION_TYPE, timeOutHandler)
+
         # setup controladora de dispositivo IO
         self._ioDeviceController = IoDeviceController(HARDWARE.ioDevice)
 
@@ -406,9 +455,13 @@ class Kernel:
         self._loader = Loader()
         self._pcbTable = PCBTable()
 
-        #pendiente inicializar schedulers via parametro
-        #self._scheduler = FCFS()
-        self._scheduler = Priority()
+        if scheduler is None:
+            self._scheduler = RoundRobin(3)
+            log.logger.info("No scheduling algorithm was specified. The kernel will schedule with {scheduler} algorithm".format(
+                scheduler=self.scheduler.__class__.__name__))
+        else:
+            self._scheduler = scheduler
+            log.logger.info("The system will schedule with {scheduler} algorithm".format(scheduler=self.scheduler.__class__.__name__))
 
     @property
     def scheduler(self):
