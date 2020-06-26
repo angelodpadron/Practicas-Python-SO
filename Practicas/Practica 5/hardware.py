@@ -41,6 +41,7 @@ IO_IN_INTERRUPTION_TYPE = "#IO_IN"
 IO_OUT_INTERRUPTION_TYPE = "#IO_OUT"
 NEW_INTERRUPTION_TYPE = "#NEW"
 TIMEOUT_INTERRUPTION_TYPE = "#TIMEOUT"
+STAT_INTERRUPTION_TYPE = "#STAT"
 
 ## emulates an Interrupt request
 class IRQ:
@@ -71,7 +72,14 @@ class InterruptVector():
     def handle(self, irq):
         log.logger.info("Handling {type} irq with parameters = {parameters}".format(type=irq.type, parameters=irq.parameters ))
         self.lock.acquire()
-        self._handlers[irq.type].execute(irq)
+        try:
+            irqHandler = self._handlers[irq.type]
+        except:
+           irqHandler = None
+           log.logger.info("No Handler found for irq type: {type}".format(type=irq.type ))
+
+        if not (irqHandler is None):
+            irqHandler.execute(irq)
         self.lock.release()
 
 
@@ -81,6 +89,7 @@ class Clock():
     def __init__(self):
         self._subscribers = []
         self._running = False
+        self._currentTick = 0
 
     def addSubscriber(self, subscriber):
         self._subscribers.append(subscriber)
@@ -102,6 +111,7 @@ class Clock():
             tickNbr += 1
 
     def tick(self, tickNbr):
+        self._currentTick = tickNbr
         log.logger.info("        --------------- tick: {tickNbr} ---------------".format(tickNbr = tickNbr))
         ## notify all subscriber that a new clock cycle has started
         for subscriber in self._subscribers:
@@ -114,6 +124,9 @@ class Clock():
         for tickNbr in range(0, times):
             self.tick(tickNbr)
 
+    @property
+    def currentTick(self):
+        return self._currentTick
 
 ## emulates the main memory (RAM)
 class Memory():
@@ -141,8 +154,9 @@ class MMU():
 
     def __init__(self, memory):
         self._memory = memory
-        self._baseDir = 0
+        self._frameSize = 0
         self._limit = 999
+        self._tlb = dict()
 
     @property
     def limit(self):
@@ -153,18 +167,38 @@ class MMU():
         self._limit = limit
 
     @property
-    def baseDir(self):
-        return self._baseDir
+    def frameSize(self):
+        return self._frameSize
 
-    @baseDir.setter
-    def baseDir(self, baseDir):
-        self._baseDir = baseDir
+    @frameSize.setter
+    def frameSize(self, frameSize):
+        self._frameSize = frameSize
+
+    def resetTLB(self):
+        self._tlb = dict()
+
+    def setPageFrame(self, pageId, frameId):
+        self._tlb[pageId] = frameId
 
     def fetch(self,  logicalAddress):
         if (logicalAddress > self._limit):
             raise Exception("Invalid Address,  {logicalAddress} is higher than process limit: {limit}".format(limit = self._limit, logicalAddress = logicalAddress))
-
-        physicalAddress = logicalAddress + self._baseDir
+        #
+        # calculamos la pagina y el offset correspondiente a la direccion logica recibida 
+        pageId = logicalAddress // self._frameSize
+        offset = logicalAddress % self._frameSize
+        #
+        # buscamos la direccion Base del frame donde esta almacenada la pagina
+        try:
+            frameId = self._tlb[pageId]
+        except:
+            raise Exception("\n*\n* ERROR \n*\n Error en el MMU\nNo se cargo la pagina  {pageId}".format(pageId = str(pageId)))
+        #
+        ##calculamos la direccion fisica resultante
+        frameBaseDir  = self._frameSize * frameId
+        physicalAddress = frameBaseDir + offset
+        #
+        # obtenemos la instrucción alocada en esa direccion
         return self._memory.read(physicalAddress)
 
 
@@ -176,8 +210,11 @@ class Cpu():
         self._interruptVector = interruptVector
         self._pc = -1
         self._ir = None
+        self._enable_stats = False
+
 
     def tick(self, tickNbr):
+        self._stats()
         if (self.isBusy()):
             self._fetch()
             self._decode()
@@ -193,6 +230,11 @@ class Cpu():
         ## decode no hace nada en este caso
         pass
 
+    def _stats(self):
+        if self._enable_stats:
+            statsIRQ = IRQ(STAT_INTERRUPTION_TYPE)
+            self._interruptVector.handle(statsIRQ)
+
     def _execute(self):
         if ASM.isEXIT(self._ir):
             killIRQ = IRQ(KILL_INTERRUPTION_TYPE)
@@ -202,7 +244,6 @@ class Cpu():
             self._interruptVector.handle(ioInIRQ)
         else:
             log.logger.info("cpu - Exec: {instr}, PC={pc}".format(instr=self._ir, pc=self._pc))
-
 
     def isBusy(self):
         return self._pc > -1
@@ -214,6 +255,14 @@ class Cpu():
     @pc.setter
     def pc(self, addr):
         self._pc = addr
+
+    @property
+    def enable_stats(self):
+        return self._enable_stats
+
+    @enable_stats.setter
+    def enable_stats(self, enable_stats):
+        self._enable_stats = enable_stats
 
     def __repr__(self):
         return "CPU(PC={pc})".format(pc=self._pc)
@@ -354,4 +403,3 @@ class Hardware():
 ### HARDWARE is a global variable
 ### can be access from any
 HARDWARE = Hardware()
-
