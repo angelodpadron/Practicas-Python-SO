@@ -341,6 +341,40 @@ class FileSystem:
         return self._programDictionary.keys()
 
 
+# Memory manager
+class MemoryManager:
+    def __init__(self):
+        self._frameSize = HARDWARE.mmu.frameSize
+        self._pageTables = {}
+        self._freeFrames = []
+        self.initializeArray()
+
+    def initializeArray(self):
+        for i in range(0, (HARDWARE.memory.size() // self._frameSize - 1)):
+            self._freeFrames.append(i)
+
+    def allocFrames(self, n):
+        frames = []
+        for i in range(0, n):
+            frames.append(self._freeFrames.pop(0))
+        return frames
+
+    # liberar frames usados por el proceso de PID
+    def freeFrames(self, PID):
+        for i in self._pageTables.pop(PID).framesData():
+            self._freeFrames.append(i)
+
+    def getPageTable(self, PID):
+        return self._pageTables[PID]
+
+    def putPageTable(self, PID, pageTable):
+        self._pageTables[PID] = pageTable
+
+    # consultar memoria disponible
+    def freeMemory(self):
+        return len(self._freeFrames) * self._frameSize
+
+
 class PCB:
     def __init__(self, path, priority):
         self._pid = -1
