@@ -140,17 +140,16 @@ class NewInterruptionHandler(AbstractInterruptionHandler):
     def execute(self, irq):
         # refactor: new debe handlear el par con la prioridad
         entryParameters = irq.parameters
-        program = entryParameters['program']
-        priority = entryParameters['priority']
-
-        newPCB = PCB(program.name, priority)
-
-        self.kernel.pcbTable.add(newPCB)
-        self.kernel.loader.load(newPCB, program)
-
-        log.logger.info("{prg} loaded onto pcb table".format(prg=newPCB.path))
-
-        self.stagePCB(newPCB)
+        programPath = entryParameters['path']
+        if programPath in self.kernel.fileSystem.allPaths():
+            priority = entryParameters['priority']
+            newPCB = PCB(programPath, priority)
+            self.kernel.pcbTable.add(newPCB)
+            self.kernel.loader.load(newPCB)
+            log.logger.info("{prg} loaded onto pcb table".format(prg=newPCB.path))
+            self.stagePCB(newPCB)
+        else:
+            log.logger.info("Error: No such directory")
 
 
 class KillInterruptionHandler(AbstractInterruptionHandler):
@@ -219,10 +218,14 @@ class Dispatcher:
 
 class Loader:
 
-    def __init__(self):
+    def __init__(self, fileSystem):
         self._nextProgram = 0
+        self._fileSystem = fileSystem
 
-    def load(self, pcb, program):
+    def load(self, pcb):
+        # fetch program from file system
+        program = self._fileSystem.read(pcb.path)
+
         newBaseDir = self._nextProgram
         progSize = len(program.instructions)
         newLimit = newBaseDir + progSize
@@ -322,6 +325,22 @@ RUNNING = "RUNNING"
 TERMINATED = "TERMINATED"
 
 
+# File system
+class FileSystem:
+    def __init__(self):
+        self._programDictionary = {}
+
+    def write(self, path, program):
+        self._programDictionary[path] = program
+        # log.logger.info("{program} location is {path}".format(program=program[0], path=path))
+
+    def read(self, path):
+        return self._programDictionary[path]
+
+    def allPaths(self):
+        return self._programDictionary.keys()
+
+
 class PCB:
     def __init__(self, path, priority):
         self._pid = -1
@@ -329,7 +348,7 @@ class PCB:
         self._limit = -1
         self._pc = 0
         self._state = NEW
-        self._path = path  # nombre de programa como direccion
+        self._path = path
 
         # priority
         self._age = 0
@@ -452,8 +471,10 @@ class Kernel:
 
         # setup componentes del sistema
         self._dispatcher = Dispatcher()
-        self._loader = Loader()
+        self._fileSystem = FileSystem()
+        self._loader = Loader(self._fileSystem)
         self._pcbTable = PCBTable()
+
 
         if scheduler is None:
             self._scheduler = RoundRobin(3)
@@ -483,11 +504,15 @@ class Kernel:
     def ioDeviceController(self):
         return self._ioDeviceController
 
+    @property
+    def fileSystem(self):
+        return self._fileSystem
+
     # funcion principal
     # refactor: run debe armar un par con el programa y su prioridad
-    def run(self, program, priority):
+    def run(self, path, priority):
         newParameters = {
-            'program': program,
+            'path': path,
             'priority': priority
         }
         newIRQ = IRQ(NEW_INTERRUPTION_TYPE, newParameters)
