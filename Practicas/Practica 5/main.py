@@ -17,21 +17,30 @@ if __name__ == '__main__':
     HARDWARE.switchOn()
 
     ## new create the Operative System Kernel
-    # "booteamos" el sistema operativo
 
-    # schedulers: FCFS, Priority, PreemptivePriority, RoundRobin(quantum) -- Round Robin es el scheduler por omision.
+    # schedulers:
+    # - FCFS
+    # - Priority
+    # - PreemptivePriority
+    # - RoundRobin(quantum) -> Round Robin es el scheduler por omision.
     kernel = Kernel()
 
-    # Ahora vamos a intentar ejecutar 3 programas a la vez
-    ##################
+    # programas en formato file system
+
     prg1 = Program("prg1.exe", [ASM.CPU(2), ASM.IO(), ASM.CPU(3), ASM.IO(), ASM.CPU(2)])
     prg2 = Program("prg2.exe", [ASM.CPU(7)])
     prg3 = Program("prg3.exe", [ASM.CPU(4), ASM.IO(), ASM.CPU(1)])
 
+    # carga con file system
+
+    kernel.fileSystem.write("/home/wine/prg1.exe", prg1)
+    kernel.fileSystem.write("/home/wine/prg2.exe", prg2)
+    kernel.fileSystem.write("/home/wine/prg3.exe", prg3)
+
     # execute all programs "concurrently"
-    kernel.run(prg1, 5)
-    kernel.run(prg2, 3)
-    kernel.run(prg3, 1)
+    kernel.run("/home/wine/prg1.exe", 5)
+    kernel.run("/home/wine/prg2.exe", 3)
+    kernel.run("/home/wine/prg3.exe", 1)
 
 
 
