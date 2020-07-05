@@ -381,7 +381,7 @@ class MemoryManager:
         self.initializeArray()
 
     def initializeArray(self):
-        for i in range(0, (HARDWARE.memory.size() // self._frameSize - 1)):
+        for i in range(0, ((HARDWARE.memory.size() // self._frameSize) - 1)):
             self._freeFrames.append(i)
 
     def allocFrames(self, n):
@@ -555,7 +555,8 @@ class Kernel:
         # setup componentes del sistema
         self._dispatcher = Dispatcher()
         self._fileSystem = FileSystem()
-        self._loader = Loader(self._fileSystem, self._fileSystem)
+        self._memoryManager = MemoryManager()
+        self._loader = Loader(self._memoryManager, self._fileSystem)
         self._pcbTable = PCBTable()
 
 
