@@ -218,31 +218,62 @@ class Dispatcher:
 
 class Loader:
 
-    def __init__(self, fileSystem):
-        self._nextProgram = 0
+    def __init__(self, memoryManager, fileSystem):
+        # self._nextProgram = 0
+        self._frameSize = HARDWARE.mmu.frameSize
+        self._memoryManager = memoryManager
         self._fileSystem = fileSystem
 
     def load(self, pcb):
         # fetch program from file system
         program = self._fileSystem.read(pcb.path)
+        framedInstructions = self.chunkify(program.instructions)
+        availableFrames = self._memoryManager.allocFrames(len(framedInstructions))
+        pageTable = PGTable()
 
-        newBaseDir = self._nextProgram
-        progSize = len(program.instructions)
-        newLimit = newBaseDir + progSize
-        pcb.setBaseDir(newBaseDir)
-        pcb.setLimit(newLimit)
-        for i in range(0, progSize):
-            HARDWARE.memory.write(i + newBaseDir, program.instructions[i])
-        self.setNextProgram(newLimit)
+        # newBaseDir = self._nextProgram
+
+        # progSize = len(program.instructions)
+        # newLimit = newBaseDir + progSize
+        # pcb.setBaseDir(newBaseDir)
+        # pcb.setLimit(newLimit)
+        # for i in range(0, progSize):
+        #     HARDWARE.memory.write(i + newBaseDir, program.instructions[i])
+        # self.setNextProgram(newLimit)
+
+        for i in range(0, len(availableFrames)):
+            pageTable.linkPageTable(i, availableFrames[i])
+
+        self._memoryManager.putPageTable(pcb.pid, pageTable)
+
+        self.loadPages(framedInstructions, availableFrames)
+
         log.logger.info(HARDWARE.memory)
 
-    @property
-    def nextProgram(self):
-        return self._nextProgram
+    # @property
+    # def nextProgram(self):
+    #     return self._nextProgram
 
-    # error con annotation setter 
-    def setNextProgram(self, value):
-        self._nextProgram = value
+    # error con annotation setter
+    # def setNextProgram(self, value):
+    #    self._nextProgram = value
+
+    def chunkify(self, instructions):
+        return list(self.chunks(instructions, self._frameSize))
+
+    def chunks(self, instructions, frameSize):
+        for i in range(0, len(instructions), frameSize):
+            yield instructions[i:i + frameSize]
+
+    def loadPages(self, framedInstructions, availableFrames):
+        for n in range(0, len(framedInstructions)):
+            frameID = availableFrames[n]
+            self.auxLoadPages(framedInstructions[n], frameID)
+
+    def auxLoadPages(self, instructionPage, frameID):
+        frameBaseDir = frameID * self._frameSize
+        for i in range(0, len(instructionPage)):
+            HARDWARE.memory.write(frameBaseDir + i, instructionPage[i])
 
 
 # Schedulers
@@ -373,6 +404,24 @@ class MemoryManager:
     # consultar memoria disponible
     def freeMemory(self):
         return len(self._freeFrames) * self._frameSize
+
+
+# Page-Frame table
+class PGTable:
+    def __init__(self):
+        self._pgTable = {}
+
+    def linkPageTable(self, page, frame):
+        self._pgTable[page] = frame
+
+    def getFrame(self, page):
+        return self._pgTable[page]
+
+    def getPagesData(self):
+        return self._pgTable.keys()
+
+    def getFramesData(self):
+        return self._pgTable.values()
 
 
 class PCB:
@@ -506,7 +555,7 @@ class Kernel:
         # setup componentes del sistema
         self._dispatcher = Dispatcher()
         self._fileSystem = FileSystem()
-        self._loader = Loader(self._fileSystem)
+        self._loader = Loader(self._fileSystem, self._fileSystem)
         self._pcbTable = PCBTable()
 
 
