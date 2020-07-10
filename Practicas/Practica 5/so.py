@@ -204,8 +204,8 @@ class TimeOutInterruptionHandler(AbstractInterruptionHandler):
 
 class Dispatcher:
 
-    def __init__(self):
-        pass
+    def __init__(self, memoryManager):
+        self._memoryManager = memoryManager
 
     def save(self, pcb):
         pcb.setPc(HARDWARE.cpu.pc)
@@ -213,7 +213,11 @@ class Dispatcher:
 
     def load(self, pcb):
         HARDWARE.cpu.pc = pcb.pc
-        HARDWARE.mmu.baseDir = pcb.baseDir
+        HARDWARE.timer.reset()
+        HARDWARE.mmu.resetTLB()
+        currentPageTable = self._memoryManager.getPageTable(pcb.pid)
+        for i in currentPageTable.getPagesData():
+            HARDWARE.mmu.setPageFrame(i, currentPageTable.getFrame(i))
 
 
 class Loader:
@@ -230,33 +234,11 @@ class Loader:
         framedInstructions = self.chunkify(program.instructions)
         availableFrames = self._memoryManager.allocFrames(len(framedInstructions))
         pageTable = PGTable()
-
-        # newBaseDir = self._nextProgram
-
-        # progSize = len(program.instructions)
-        # newLimit = newBaseDir + progSize
-        # pcb.setBaseDir(newBaseDir)
-        # pcb.setLimit(newLimit)
-        # for i in range(0, progSize):
-        #     HARDWARE.memory.write(i + newBaseDir, program.instructions[i])
-        # self.setNextProgram(newLimit)
-
         for i in range(0, len(availableFrames)):
             pageTable.linkPageTable(i, availableFrames[i])
-
         self._memoryManager.putPageTable(pcb.pid, pageTable)
-
         self.loadPages(framedInstructions, availableFrames)
-
         log.logger.info(HARDWARE.memory)
-
-    # @property
-    # def nextProgram(self):
-    #     return self._nextProgram
-
-    # error con annotation setter
-    # def setNextProgram(self, value):
-    #    self._nextProgram = value
 
     def chunkify(self, instructions):
         return list(self.chunks(instructions, self._frameSize))
@@ -381,7 +363,7 @@ class MemoryManager:
         self.initializeArray()
 
     def initializeArray(self):
-        for i in range(0, ((HARDWARE.memory.size() // self._frameSize) - 1)):
+        for i in range(0, ((HARDWARE.memory.size // self._frameSize) - 1)):
             self._freeFrames.append(i)
 
     def allocFrames(self, n):
@@ -553,9 +535,9 @@ class Kernel:
         self._ioDeviceController = IoDeviceController(HARDWARE.ioDevice)
 
         # setup componentes del sistema
-        self._dispatcher = Dispatcher()
-        self._fileSystem = FileSystem()
         self._memoryManager = MemoryManager()
+        self._dispatcher = Dispatcher(self._memoryManager)
+        self._fileSystem = FileSystem()
         self._loader = Loader(self._memoryManager, self._fileSystem)
         self._pcbTable = PCBTable()
 
