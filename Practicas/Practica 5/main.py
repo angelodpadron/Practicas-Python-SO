@@ -10,8 +10,8 @@ if __name__ == '__main__':
     log.setupLogger()
     log.logger.info('Starting emulator')
 
-    ## setup our hardware and set memory size to 25 "cells"
-    HARDWARE.setup(25)
+    ## setup our hardware and set memory size to 32 "cells"
+    HARDWARE.setup(32, 4)
 
     ## Switch on computer
     HARDWARE.switchOn()
