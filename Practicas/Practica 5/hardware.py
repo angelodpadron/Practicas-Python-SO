@@ -152,9 +152,9 @@ class Memory():
 ## emulates the Memory Management Unit (MMU)
 class MMU():
 
-    def __init__(self, memory):
+    def __init__(self, memory, frameSize):
         self._memory = memory
-        self._frameSize = 0
+        self._frameSize = frameSize
         self._limit = 999
         self._tlb = dict()
 
@@ -349,13 +349,13 @@ class Timer:
 class Hardware():
 
     ## Setup our hardware
-    def setup(self, memorySize):
+    def setup(self, memorySize, frameSize):
         ## add the components to the "motherboard"
         self._memory = Memory(memorySize)
         self._interruptVector = InterruptVector()
         self._clock = Clock()
         self._ioDevice = PrinterIODevice()
-        self._mmu = MMU(self._memory)
+        self._mmu = MMU(self._memory, frameSize)
         self._cpu = Cpu(self._mmu, self._interruptVector)
         self._timer = Timer(self._cpu, self._interruptVector)
         self._clock.addSubscriber(self._ioDevice)
